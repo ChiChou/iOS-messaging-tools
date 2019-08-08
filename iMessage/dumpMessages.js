@@ -57,10 +57,10 @@ function pm(p) {
     }
 }
 
-// Offset from macOS 10.14.3
-var offsetHandleMessage = 0xe0f9;
-var iMessageBase = Module.findBaseAddress('iMessage');
-var messageHandlerAddr = iMessageBase.add(offsetHandleMessage);
+const selector = '- handler:incomingMessage:originalEncryptionType:messageID:toIdentifier:' + 
+    'fromIdentifier:fromToken:timeStamp:fromIDSID:incomingEngroup:needsDeliveryReceipt:' +
+    'deliveryContext:storageContext:messageContext:isBeingReplayed:mergeID:';
+const messageHandlerAddr = ObjC.classes.MessageServiceSession[selector].implementation;
 
 send("Hooking -[MessageServiceSession handler:incomingMessage:...] @ " + messageHandlerAddr);
 Interceptor.attach(messageHandlerAddr, {
