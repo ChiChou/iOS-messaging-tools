@@ -18,17 +18,16 @@ function po(p) {
     return ObjC.Object(p).toString();
 }
 
-var COMPRESSION_ZLIB = 0x205;
-var compression_decode_buffer_addr = Module.getExportByName(null, "compression_decode_buffer");
-var compression_decode_buffer = new NativeFunction(compression_decode_buffer_addr, 'ulong', ['pointer', 'ulong', 'pointer', 'ulong', 'pointer', 'int']);
+const COMPRESSION_ZLIB = 0x205;
+const SCRATCH_SIZE = 0x20090; // zlib_decode_scratch_size
+const compression_decode_buffer_addr = Module.getExportByName(null, "compression_decode_buffer");
+const compression_decode_buffer = new NativeFunction(compression_decode_buffer_addr, 'ulong', ['pointer', 'ulong', 'pointer', 'ulong', 'pointer', 'int']);
 
-function gunzip(bytes) {
-    var input = Memory.alloc(0x10000);
-    input.writeByteArray(bytes);
-    var output = Memory.alloc(0x10000);
-                                                       // Strip header, this function expects "raw" gzip
-    var outSize = compression_decode_buffer(output, 0x10000, input.add(10), bytes.length - 10, NULL, COMPRESSION_ZLIB);
-    return output.readByteArray(outSize);
+function isGZip(data) {
+    const u16 = new Uint16Array(1);
+    u16[0] = data.bytes().readU16();
+    const bytes = new Uint8Array(u16.buffer);
+    return bytes[0] == 0x1f && bytes[1] == 0x8b;
 }
 
 // Parses an iMessage and returns a string representation of it.
@@ -39,14 +38,11 @@ function pm(p) {
 
     // Content is a NSData instance
     var content = ObjC.Object(p);
-
-    var bytes = new Uint8Array(content.bytes().readByteArray(content.length()));
-    if (bytes[0] == 0x1f && bytes[1] == 0x8b) {
-        // gzip compressed data
-        var decompressed = gunzip(bytes);
-        var buf = Memory.alloc(decompressed.byteLength);
-        buf.writeByteArray(decompressed);
-        content = ObjC.classes.NSData.dataWithBytes_length_(buf, decompressed.byteLength);
+    if (isGZip(content)) {
+        const bytes = content.bytes();
+        const output = Memory.alloc(SCRATCH_SIZE);
+        const outSize = compression_decode_buffer(output, SCRATCH_SIZE, bytes.add(10), bytes.length - 10, NULL, COMPRESSION_ZLIB);
+        content = ObjC.classes.NSData.dataWithBytes_length_(output, outSize);
     }
 
     var pList = ObjC.classes.NSPropertyListSerialization.propertyListWithData_options_format_error_(content, 0, ObjC.Object(NULL), ObjC.Object(NULL));
